@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.3.32929.385
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MonteCarloCheckers", "MonteCarloCheckers\MonteCarloCheckers.vcxproj", "{6C4017B3-9168-4480-883F-3EE74C08B18A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6C4017B3-9168-4480-883F-3EE74C08B18A}.Debug|x64.ActiveCfg = Debug|x64
+		{6C4017B3-9168-4480-883F-3EE74C08B18A}.Debug|x64.Build.0 = Debug|x64
+		{6C4017B3-9168-4480-883F-3EE74C08B18A}.Release|x64.ActiveCfg = Release|x64
+		{6C4017B3-9168-4480-883F-3EE74C08B18A}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E0693D1E-27CF-4975-BB75-64931202AA3F}
+	EndGlobalSection
+EndGlobal
