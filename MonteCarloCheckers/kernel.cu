@@ -45,7 +45,7 @@ void Remove(uint*, int);
 
 int MakeMove(uint*, uint*, RandomResult*, bool);
 
-//bool MultipleHit(uint*, uint*, RandomResult*, int*)
+bool MultipleHit(uint*, uint*, RandomResult*, int*);
 
 int main()
 {
@@ -132,8 +132,16 @@ int main()
 				}
 			}
 		}
-		if (i % 2) Decode(checkersBoard, occupied, ~color);
-		else Decode(checkersBoard, occupied, color);
+		if (i % 2)
+		{
+			Decode(checkersBoard, occupied, ~color);
+			printf("Y\n");
+		}
+		else
+		{
+			Decode(checkersBoard, occupied, color);
+			printf("X\n");
+		}
 		DisplayBoard(checkersBoard);
 		color = ~color;
 	}
@@ -516,11 +524,14 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									//printf("Znaleziono %d ruch %d -> %d lglg\n", count, n, -9);
 									if (count == moves)
 									{
-										printf("Wykonany ruch!\n");
-										printf("Bicie!\n");
+										//printf("Wykonany ruch!\n");
+										printf("Bicie! %d -> %d\n", n, -9);
 										Remove(occupied, n - 4 - k);
 										Move(occupied, color, n, -9);
-										return 1;
+										count = 1;
+										n -= 9;
+										while (MultipleHit(occupied, color, random, &n)) count++;
+										return count;
 									}
 								}
 							}
@@ -549,11 +560,14 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									//printf("Znaleziono %d ruch %d -> %d pgpg\n", count, n, -7);
 									if (count == moves)
 									{
-										printf("Wykonany ruch!\n");
-										printf("Bicie!\n");
+										//printf("Wykonany ruch!\n");
+										printf("Bicie! %d -> %d\n", n, -7);
 										Remove(occupied, n - 3 - k);
 										Move(occupied, color, n, -7);
-										return 1;
+										count = 1;
+										n -= 7;
+										while (MultipleHit(occupied, color, random, &n)) count++;
+										return count;
 									}
 								}
 							}
@@ -585,11 +599,14 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									//printf("Znaleziono %d ruch %d -> %d ldld\n", count, n, 7);
 									if (count == moves)
 									{
-										printf("Wykonany ruch!\n");
-										printf("Bicie!\n");
+										//printf("Wykonany ruch!\n");
+										printf("Bicie! %d -> %d\n", n, 7);
 										Remove(occupied, n + 4 - k);
 										Move(occupied, color, n, 7);
-										return 1;
+										count = 1;
+										n += 7;
+										while (MultipleHit(occupied, color, random, &n)) count++;
+										return count;
 									}
 								}
 							}
@@ -618,11 +635,14 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									//printf("Znaleziono %d ruch %d -> %d pdpd\n", count, n, 9);
 									if (count == moves)
 									{
-										printf("Wykonany ruch!\n");
-										printf("Bicie!\n");
+										//printf("Wykonany ruch!\n");
+										printf("Bicie! %d -> %d\n", n, 9);
 										Remove(occupied, n + 5 - k);
 										Move(occupied, color, n, 9);
-										return 1;
+										count = 1;
+										n += 9;
+										while (MultipleHit(occupied, color, random, &n)) count++;
+										return count;
 									}
 								}
 							}
@@ -645,5 +665,89 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 			t_occupied >>= 1;
 		}
 		t_occupied = (*occupied) & (*color);
+	}
+}
+
+bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
+{
+	int count = 0;
+	int k = (*n >> 2) & 1;
+	*random = Random(*random);
+	int moves = (int)((random->value + 0.5) / 0.25) + 1;
+	uint enemies = *occupied & ~(*color);
+	while (1)
+	{
+		if ((*n >> 2) > 1) // mozna dwa razy w gore
+		{
+			if ((*n & 3) > 0) // mozna dwa razy w lewo
+			{
+				if ((enemies & (1 << *n - 4 - k)) && !((*occupied) & (1 << *n - 9))) // raz zajete dwa wolne
+				{
+					count++;
+					if (count == moves)
+					{
+						printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
+						Move(occupied, color, *n, -9);
+						Remove(occupied, *n - 4 - k);
+						*n = *n - 9;
+						return true;
+					}
+				}
+			}
+			if ((*n & 3) < 3) // mozna dwa razy w prawo
+			{
+				if ((enemies & (1 << *n - 3 - k)) && !((*occupied) & (1 << *n - 7))) // raz zajete dwa wolne
+				{
+					count++;
+					if (count == moves)
+					{
+						printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
+						Move(occupied, color, *n, -7);
+						Remove(occupied, *n - 3 - k);
+						*n = *n - 7;
+						return true;
+					}
+				}
+			}
+		}
+		if ((*n >> 2) < 6) // mozna dwa razy w dol
+		{
+			if ((*n & 3) > 0) // mozna dwa razy w lewo
+			{
+				if ((enemies & (1 << *n + 4 - k)) && !((*occupied) & (1 << *n + 7))) // raz zajete dwa wolne
+				{
+					count++;
+					if (count == moves)
+					{
+						printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
+						Move(occupied, color, *n, 7);
+						Remove(occupied, *n + 4 - k);
+						*n = *n + 7;
+						return true;
+					}
+				}
+			}
+			if ((*n & 3) < 3) // mozna dwa razy w prawo
+			{
+				if ((enemies & (1 << *n + 5 - k)) && !((*occupied) & (1 << *n + 9))) // raz zajete dwa wolne
+				{
+					count++;
+					if (count == moves)
+					{
+						printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
+						Move(occupied, color, *n, 9);
+						Remove(occupied, *n + 5 - k);
+						*n = *n + 9;
+						return true;
+					}
+				}
+			}
+		}
+
+		if (count == 0) // koniec bicia
+		{
+			printf("Koniec bicia!\n");
+			return false;
+		}
 	}
 }
