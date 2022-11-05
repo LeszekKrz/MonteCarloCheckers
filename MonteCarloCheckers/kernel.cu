@@ -33,19 +33,20 @@ RandomResult Random(RandomResult);
 
 void DisplayBoard(char board[8][8]);
 
-void Encode(char board[8][8], uint*, uint*);
-void Decode(char board[8][8], uint, uint);
+void Encode(char board[8][8], uint*, uint*, uint*);
+void Decode(char board[8][8], uint, uint, uint);
 
 void PrintBits(uint);
 
-//Coordinates Convert(int);
 
 void Move(uint*, uint*, int, int);
-void Remove(uint*, int);
+void RoyalMove(uint*, uint*, uint*, int, int);
+void Remove(uint*, uint*, int);
 
-int MakeMove(uint*, uint*, RandomResult*, bool);
+int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
 
-bool MultipleHit(uint*, uint*, RandomResult*, int*);
+bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
+
 
 int main()
 {
@@ -82,15 +83,29 @@ int main()
 	}
 	DisplayBoard(checkersBoard);
 	//printf("\n\n\n");
-	uint occupied, color;
-	Encode(checkersBoard, &occupied, &color);
+	uint occupied = 0, color = 0, kings = 0;
+	occupied |= 1 << 9;
+	occupied |= 1 << 18;
+	color |= 1 << 18;
+	kings |= 1 << 18;
 	PrintBits(occupied);
 	PrintBits(color);
+	PrintBits(kings);
+	Decode(checkersBoard, occupied, color, kings);
+	DisplayBoard(checkersBoard);
+	MakeMove(&occupied, &color, &kings, &random, 0);
+	Decode(checkersBoard, occupied, color, kings);
+	DisplayBoard(checkersBoard);
+
+	/*Encode(checkersBoard, &occupied, &color, &kings);
+	PrintBits(occupied);
+	PrintBits(color);
+	PrintBits(kings);
 	int blacks = 12, whites = 12;
 	int result;
 	for (int i = 0; i < 100; i++)
 	{
-		result = MakeMove(&occupied, &color, &random, i % 2);
+		result = MakeMove(&occupied, &color, &kings, &random, i % 2);
 		if (result == -1)
 		{
 			printf("Koniec gry!\n");
@@ -103,7 +118,7 @@ int main()
 			{
 				printf("Biali nie moga wykonac ruchu!\n");
 			}
-			Decode(checkersBoard, occupied, color);
+			Decode(checkersBoard, occupied, color, kings);
 			DisplayBoard(checkersBoard);
 			break;
 		}
@@ -115,7 +130,7 @@ int main()
 				if (whites == 0)
 				{
 					printf("Biali przegrali!\n");
-					Decode(checkersBoard, occupied, color);
+					Decode(checkersBoard, occupied, color, kings);
 					DisplayBoard(checkersBoard);
 					break;
 				}
@@ -126,7 +141,7 @@ int main()
 				if (blacks == 0)
 				{
 					printf("Czarni przegrali\n");
-					Decode(checkersBoard, occupied, color);
+					Decode(checkersBoard, occupied, color, kings);
 					DisplayBoard(checkersBoard);
 					break;
 				}
@@ -134,17 +149,17 @@ int main()
 		}
 		if (i % 2)
 		{
-			Decode(checkersBoard, occupied, ~color);
+			Decode(checkersBoard, occupied, ~color, kings);
 			printf("Y\n");
 		}
 		else
 		{
-			Decode(checkersBoard, occupied, color);
+			Decode(checkersBoard, occupied, color, kings);
 			printf("X\n");
 		}
 		DisplayBoard(checkersBoard);
 		color = ~color;
-	}
+	}*/
 	//MakeMove(&occupied, &color, &random);
 	//Decode(checkersBoard, occupied, color);
 	//DisplayBoard(checkersBoard);
@@ -237,7 +252,7 @@ cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
 	}
 
 	// Launch a kernel on the GPU with one thread for each element.
-	addKernel << <1, size >> > (dev_c, dev_a, dev_b);
+	//addKernel << <1, size >> > (dev_c, dev_a, dev_b);
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
@@ -306,10 +321,11 @@ void DisplayBoard(char board[8][8])
 	printf("\n");
 }
 
-void Encode(char board[8][8], uint* occupied, uint* color)
+void Encode(char board[8][8], uint* occupied, uint* color, uint* kings)
 {
 	*occupied = 0;
 	*color = 0;
+	*kings = 0;
 	for (int i = 0; i < 8; i++)
 	{
 		for (int j = 0; j < 8; j++)
@@ -321,12 +337,21 @@ void Encode(char board[8][8], uint* occupied, uint* color)
 				{
 					*color |= 1 << (i * 4 + j / 2);
 				}
+				else if (board[i][j] == 'x')
+				{
+					*color |= 1 << (i * 4 + j / 2);
+					*kings |= 1 << (i * 4 + j / 2);
+				}
+				else if (board[i][j] == 'y')
+				{
+					*kings |= 1 << (i * 4 + j / 2);
+				}
 			}
 		}
 	}
 }
 
-void Decode(char board[8][8], uint occupied, uint color)
+void Decode(char board[8][8], uint occupied, uint color, uint kings)
 {
 	int k;
 	for (int i = 0; i < 8; i++)
@@ -339,11 +364,19 @@ void Decode(char board[8][8], uint occupied, uint color)
 			{
 				if (color & 1)
 				{
-					board[i][2 * j + 1 - k] = 'X';
+					if (kings & 1)
+					{
+						board[i][2 * j + 1 - k] = 'x';
+					}
+					else board[i][2 * j + 1 - k] = 'X';
 				}
 				else
 				{
-					board[i][2 * j + 1 - k] = 'Y';
+					if (kings & 1)
+					{
+						board[i][2 * j + 1 - k] = 'y';
+					}
+					else board[i][2 * j + 1 - k] = 'Y';
 				}
 			}
 			else
@@ -352,6 +385,7 @@ void Decode(char board[8][8], uint occupied, uint color)
 			}
 			occupied >>= 1;
 			color >>= 1;
+			kings >>= 1;
 		}
 	}
 }
@@ -377,12 +411,20 @@ void Move(uint* board, uint* color, int n, int d) // zakladam ze rusza sie tylko
 	(*color) |= 1 << (n + d);
 }
 
-void Remove(uint* board, int n)
+void RoyalMove(uint* board, uint* color, uint* kings, int n, int d)
 {
-	(*board) &= ~(1 << n);
+	Move(board, color, n, d);
+	(*kings) &= ~(1 << n);
+	(*kings) |= 1 << (n + d);
 }
 
-int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // zakladam ze rusza sie tylko kolor oznaczony 1
+void Remove(uint* board, uint* kings, int n)
+{
+	(*board) &= ~(1 << n);
+	(*kings) &= ~(1 << n);
+}
+
+int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, bool flag) // zakladam ze rusza sie tylko kolor oznaczony 1
 {
 	*random = Random(*random);
 	uint t_occupied = (*occupied) & (*color);
@@ -390,6 +432,7 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 	int k, n = 0;
 	int count = 0;
 	bool killing = false;
+	int t_n;
 
 	n = 0;
 	while (t_occupied > 0) // liczenie mozliwych ruchow
@@ -413,9 +456,25 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 							}
 						}
 					}
-					else if (!flag && !((*occupied) & (1 << n - 4 - k))) // wolne lewo gora
+					else if ((*kings & (1 << n) || !flag) && !((*occupied) & (1 << n - 4 - k))) // wolne lewo gora
 					{
 						count++;
+						if (*kings & (1 << n))
+						{
+							t_n = n - 4 -k;
+							k ^= 1;
+							while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
+							{
+								t_n += -4 - k;
+								k ^= 1;
+							}
+							if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 4 - k)))
+							{
+								printf("morderczy krol\n");
+								killing = true;
+							}
+							k = (n >> 2) & 1;
+						}
 						//printf("Znaleziono %d ruch %d -> %d lglg\n", count, n, -4 - k);
 					}
 				}
@@ -433,9 +492,25 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 							}
 						}
 					}
-					else if (!flag && !((*occupied) & (1 << n - 3 - k))) // wolne prawo gora
+					else if ((*kings & (1 << n) || !flag) && !((*occupied) & (1 << n - 3 - k))) // wolne prawo gora
 					{
 						count++;
+						if (*kings & (1 << n))
+						{
+							t_n = n - 3 - k;
+							k ^= 1;
+							while ((t_n >> 2) > 0 && ((t_n & 3) - k < 3) && !(*occupied & (1 << t_n)))
+							{
+								t_n += -3 - k;
+								k ^= 1;
+							}
+							if ((t_n >> 2) > 0 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 3 - k)))
+							{
+								printf("Morderczy krol\n");
+								killing = true;
+							}
+							k = (n >> 2) & 1;
+						}
 						//printf("Znaleziono %d ruch %d -> %d lglg\n", count, n, -3 - k);
 					}
 				}
@@ -456,9 +531,25 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 							}
 						}
 					}
-					else if (flag && !((*occupied) & (1 << n + 4 - k)))// wolne lewo dol
+					else if ((*kings & (1 << n) || flag) && !((*occupied) & (1 << n + 4 - k)))// wolne lewo dol
 					{
 						count++;
+						if (*kings & (1 << n))
+						{
+							t_n = n + 4 - k;
+							k ^= 1;
+							while ((t_n >> 2) < 7 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
+							{
+								t_n += 4 - k;
+								k ^= 1;
+							}
+							if ((t_n >> 2) < 7 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n + 4 - k)))
+							{
+								printf("Morderczy krol\n");
+								killing = true;
+							}
+							k = (n >> 2) & 1;
+						}
 						//printf("Znaleziono %d ruch %d -> %d lglg\n", count, n, 4 - k);
 					}
 				}
@@ -476,9 +567,25 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 							}
 						}
 					}
-					else if (flag && !((*occupied) & (1 << n + 5 - k))) // wolne
+					else if ((*kings & (1 << n) || flag) && !((*occupied) & (1 << n + 5 - k))) // wolne prawo dol
 					{
 						count++;
+						if (*kings & (1 << n))
+						{
+							t_n = n + 5 - k;
+							k ^= 1;
+							while ((t_n >> 2) < 7 && ((t_n & 3) - k < 3) && !(*occupied & (1 << t_n)))
+							{
+								t_n += 5 - k;
+								k ^= 1;
+							}
+							if ((t_n >> 2) < 7 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n + 5 - k)))
+							{
+								printf("Morderczy krol\n");
+								killing = true;
+							}
+							k = (n >> 2) & 1;
+						}
 						//printf("Znaleziono %d ruch %d -> %d lglg\n", count, n, 5 - k);
 					}
 				}
@@ -526,25 +633,55 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									{
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, -9);
-										Remove(occupied, n - 4 - k);
+										Remove(occupied,kings, n - 4 - k);
 										Move(occupied, color, n, -9);
 										count = 1;
 										n -= 9;
-										while (MultipleHit(occupied, color, random, &n)) count++;
+										while (MultipleHit(occupied, color, kings, random, &n)) count++;
 										return count;
 									}
 								}
 							}
 						}
-						else if (!killing && !flag && !((*occupied) & (1 << n - 4 - k))) // wolne lewo gora
+						else if (!((*occupied) & (1 << n - 4 - k))) // wolne lewo gora
 						{
-							count++;
-							//printf("Znaleziono %d ruch %d -> %d lg\n", count, n, -4 - k);
-							if (count == moves)
+							if (killing && (*kings & (1 << n)))
 							{
-								//printf("Wykonany ruch!\n");
-								Move(occupied, color, n, -4 - k);
-								return 0;
+								if (((n >> 2) > 0) && ((n & 3) + 1 - k))
+								{
+									t_n = n - 4 - k;
+									k ^= 1;
+									while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
+									{
+										t_n += -4 - k;
+										k ^= 1;
+									}
+									if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 4 - k)))
+									{
+										count++;
+										if (count == moves)
+										{
+											printf("Krol atakuje? %d -> %d\n", n, t_n - n - 4 - k);
+											RoyalMove(occupied, color, kings, n, t_n - n - 4 - k);
+											Remove(occupied, kings,t_n);
+											PrintBits(*occupied);
+											PrintBits(*color);
+											return 1;
+										}
+									}
+									k = (n >> 2) & 1;
+								}
+							}
+							if (!killing && !flag)
+							{
+								count++;
+								//printf("Znaleziono %d ruch %d -> %d lg\n", count, n, -4 - k);
+								if (count == moves)
+								{
+									//printf("Wykonany ruch!\n");
+									Move(occupied, color, n, -4 - k);
+									return 0;
+								}
 							}
 						}
 					}
@@ -562,11 +699,11 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									{
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, -7);
-										Remove(occupied, n - 3 - k);
+										Remove(occupied, kings,n - 3 - k);
 										Move(occupied, color, n, -7);
 										count = 1;
 										n -= 7;
-										while (MultipleHit(occupied, color, random, &n)) count++;
+										while (MultipleHit(occupied, color, kings, random, &n)) count++;
 										return count;
 									}
 								}
@@ -601,11 +738,11 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									{
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, 7);
-										Remove(occupied, n + 4 - k);
+										Remove(occupied, kings,n + 4 - k);
 										Move(occupied, color, n, 7);
 										count = 1;
 										n += 7;
-										while (MultipleHit(occupied, color, random, &n)) count++;
+										while (MultipleHit(occupied, color, kings, random, &n)) count++;
 										return count;
 									}
 								}
@@ -637,11 +774,11 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 									{
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, 9);
-										Remove(occupied, n + 5 - k);
+										Remove(occupied, kings,n + 5 - k);
 										Move(occupied, color, n, 9);
 										count = 1;
 										n += 9;
-										while (MultipleHit(occupied, color, random, &n)) count++;
+										while (MultipleHit(occupied, color, kings, random, &n)) count++;
 										return count;
 									}
 								}
@@ -668,7 +805,7 @@ int MakeMove(uint* occupied, uint* color, RandomResult* random, bool flag) // za
 	}
 }
 
-bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
+bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random, int* n)
 {
 	int count = 0;
 	int k = (*n >> 2) & 1;
@@ -688,7 +825,7 @@ bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
 						Move(occupied, color, *n, -9);
-						Remove(occupied, *n - 4 - k);
+						Remove(occupied, kings,*n - 4 - k);
 						*n = *n - 9;
 						return true;
 					}
@@ -703,7 +840,7 @@ bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
 						Move(occupied, color, *n, -7);
-						Remove(occupied, *n - 3 - k);
+						Remove(occupied, kings,*n - 3 - k);
 						*n = *n - 7;
 						return true;
 					}
@@ -721,7 +858,7 @@ bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
 						Move(occupied, color, *n, 7);
-						Remove(occupied, *n + 4 - k);
+						Remove(occupied, kings,*n + 4 - k);
 						*n = *n + 7;
 						return true;
 					}
@@ -736,7 +873,7 @@ bool MultipleHit(uint* occupied, uint* color, RandomResult* random, int* n)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
 						Move(occupied, color, *n, 9);
-						Remove(occupied, *n + 5 - k);
+						Remove(occupied, kings,*n + 5 - k);
 						*n = *n + 9;
 						return true;
 					}
