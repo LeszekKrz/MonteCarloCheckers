@@ -38,9 +38,7 @@ void Decode(char board[8][8], uint, uint, uint);
 
 void PrintBits(uint);
 
-
-void Move(uint*, uint*, int, int);
-void RoyalMove(uint*, uint*, uint*, int, int);
+void Move(uint*, uint*, uint*, int, int);
 void Remove(uint*, uint*, int);
 
 int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
@@ -84,13 +82,10 @@ int main()
 	DisplayBoard(checkersBoard);
 	//printf("\n\n\n");
 	uint occupied = 0, color = 0, kings = 0;
-	occupied |= 1 << 9;
 	occupied |= 1 << 18;
+	occupied |= 1 << 17;
 	color |= 1 << 18;
 	kings |= 1 << 18;
-	PrintBits(occupied);
-	PrintBits(color);
-	PrintBits(kings);
 	Decode(checkersBoard, occupied, color, kings);
 	DisplayBoard(checkersBoard);
 	MakeMove(&occupied, &color, &kings, &random, 0);
@@ -404,18 +399,17 @@ void PrintBits(uint s)
 //    return ((n/4) % 2 == 0)?()
 //}
 
-void Move(uint* board, uint* color, int n, int d) // zakladam ze rusza sie tylko kolor oznaczony 1
+
+void Move(uint* board, uint* color, uint* kings, int n, int d)
 {
 	(*board) &= ~(1 << n);
 	(*board) |= 1 << (n + d);
 	(*color) |= 1 << (n + d);
-}
-
-void RoyalMove(uint* board, uint* color, uint* kings, int n, int d)
-{
-	Move(board, color, n, d);
-	(*kings) &= ~(1 << n);
-	(*kings) |= 1 << (n + d);
+	if (*kings & (1 << n))
+	{
+		(*kings) &= ~(1 << n);
+		(*kings) |= 1 << (n + d);
+	}
 }
 
 void Remove(uint* board, uint* kings, int n)
@@ -605,7 +599,8 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 	if (killing) printf("Musze bic!\n");
 	t_occupied = (*occupied) & (*color);
 
-	int moves = (int)((random->value + 0.5) / (1.0 / count)) + 1;
+	//int moves = (int)((random->value + 0.5) / (1.0 / count)) + 1;
+	int moves = 1;
 	count = 0;
 
 
@@ -634,7 +629,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, -9);
 										Remove(occupied,kings, n - 4 - k);
-										Move(occupied, color, n, -9);
+										Move(occupied, color, kings, n, -9);
 										count = 1;
 										n -= 9;
 										while (MultipleHit(occupied, color, kings, random, &n)) count++;
@@ -647,27 +642,24 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 						{
 							if (killing && (*kings & (1 << n)))
 							{
-								if (((n >> 2) > 0) && ((n & 3) + 1 - k))
+								t_n = n - 4 - k;
+								k ^= 1;
+								while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
 								{
-									t_n = n - 4 - k;
+									t_n += -4 - k;
 									k ^= 1;
-									while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
+								}
+								if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 4 - k)))
+								{
+									count++;
+									if (count == moves)
 									{
-										t_n += -4 - k;
-										k ^= 1;
-									}
-									if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 4 - k)))
-									{
-										count++;
-										if (count == moves)
-										{
-											printf("Krol atakuje? %d -> %d\n", n, t_n - n - 4 - k);
-											RoyalMove(occupied, color, kings, n, t_n - n - 4 - k);
-											Remove(occupied, kings,t_n);
-											PrintBits(*occupied);
-											PrintBits(*color);
-											return 1;
-										}
+										printf("Krol atakuje! %d -> %d\n", n, t_n - n - 4 - k);
+										Move(occupied, color, kings, n, t_n - n - 4 - k);
+										Remove(occupied, kings, t_n);
+										PrintBits(*occupied);
+										PrintBits(*color);
+										return 1;
 									}
 									k = (n >> 2) & 1;
 								}
@@ -679,7 +671,25 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 								if (count == moves)
 								{
 									//printf("Wykonany ruch!\n");
-									Move(occupied, color, n, -4 - k);
+									if (*kings & (1 << n))
+									{
+										count = 1;
+										t_n = n - 4 - k;
+										k ^= 1;
+										while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(*occupied & (1 << t_n)))
+										{
+											count++;
+											t_n += -4 - k;
+											k ^= 1;
+										}
+										if (*occupied & (1 << t_n)) count--;
+										moves = (int)((random->value + 0.5) / (1.0 / count)) + 1;
+										printf("Wykrylem %d ruchow i wykonuje %d ruch\n", count, moves);
+										k = (n >> 2) & 1;
+										Move(occupied, color, kings, n, (moves >> 1) * (-9) + (moves & 1) * (-4 - k));
+										return 0;
+									}
+									Move(occupied, color, kings, n, -4 - k);
 									return 0;
 								}
 							}
@@ -700,7 +710,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, -7);
 										Remove(occupied, kings,n - 3 - k);
-										Move(occupied, color, n, -7);
+										Move(occupied, color, kings, n, -7);
 										count = 1;
 										n -= 7;
 										while (MultipleHit(occupied, color, kings, random, &n)) count++;
@@ -716,7 +726,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							if (count == moves)
 							{
 								//printf("Wykonany ruch!\n");
-								Move(occupied, color, n, -3 - k);
+								Move(occupied, color, kings, n, -3 - k);
 								return 0;
 							}
 						}
@@ -739,7 +749,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, 7);
 										Remove(occupied, kings,n + 4 - k);
-										Move(occupied, color, n, 7);
+										Move(occupied, color, kings, n, 7);
 										count = 1;
 										n += 7;
 										while (MultipleHit(occupied, color, kings, random, &n)) count++;
@@ -755,7 +765,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							if (count == moves)
 							{
 								//printf("Wykonany ruch!\n");
-								Move(occupied, color, n, 4 - k);
+								Move(occupied, color, kings, n, 4 - k);
 								return 0;
 							}
 						}
@@ -775,7 +785,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 										//printf("Wykonany ruch!\n");
 										printf("Bicie! %d -> %d\n", n, 9);
 										Remove(occupied, kings,n + 5 - k);
-										Move(occupied, color, n, 9);
+										Move(occupied, color, kings, n, 9);
 										count = 1;
 										n += 9;
 										while (MultipleHit(occupied, color, kings, random, &n)) count++;
@@ -791,7 +801,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							if (count == moves)
 							{
 								//printf("Wykonany ruch!\n");
-								Move(occupied, color, n, 5 - k);
+								Move(occupied, color, kings, n, 5 - k);
 								return 0;
 							}
 						}
@@ -824,7 +834,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					if (count == moves)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
-						Move(occupied, color, *n, -9);
+						Move(occupied, color, kings, *n, -9);
 						Remove(occupied, kings,*n - 4 - k);
 						*n = *n - 9;
 						return true;
@@ -839,7 +849,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					if (count == moves)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
-						Move(occupied, color, *n, -7);
+						Move(occupied, color, kings, *n, -7);
 						Remove(occupied, kings,*n - 3 - k);
 						*n = *n - 7;
 						return true;
@@ -857,7 +867,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					if (count == moves)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
-						Move(occupied, color, *n, 7);
+						Move(occupied, color, kings, *n, 7);
 						Remove(occupied, kings,*n + 4 - k);
 						*n = *n + 7;
 						return true;
@@ -872,7 +882,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					if (count == moves)
 					{
 						printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
-						Move(occupied, color, *n, 9);
+						Move(occupied, color, kings, *n, 9);
 						Remove(occupied, kings,*n + 5 - k);
 						*n = *n + 9;
 						return true;
