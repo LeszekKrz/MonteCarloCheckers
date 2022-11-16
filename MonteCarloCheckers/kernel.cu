@@ -11,11 +11,11 @@ typedef unsigned long long int ulong;
 
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size);
 
-__global__ void addKernel(int* c, const int* a, const int* b)
-{
-	int i = threadIdx.x;
-	c[i] = a[i] + b[i];
-}
+//__global__ void addKernel(int* c, const int* a, const int* b)
+//{
+//	int i = threadIdx.x;
+//	c[i] = a[i] + b[i];
+//}
 
 __device__ __host__ uint TausStep(uint, int, int, int, uint);
 __device__ __host__ uint LCGStep(uint z, uint A, uint C);
@@ -223,22 +223,34 @@ int main()
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
+	
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
 
-	SimulateGame << <1, 1 >> > (d_random, d_board, d_colors, d_kings);
+	
+	cudaEventRecord(start);
+	printf("Poczatek symulacji...\n");
+	for (int i = 0; i < 1; i++)
+	{
 
-	cudaStatus = cudaGetLastError();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-		goto Error;
+		SimulateGame << <16, 500 >> > (d_random, d_board, d_colors, d_kings);
+
+		cudaStatus = cudaGetLastError();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+			goto Error;
+		}
+
+		cudaStatus = cudaDeviceSynchronize();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+			goto Error;
+		}
 	}
+	cudaEventRecord(stop);
 
-	cudaStatus = cudaDeviceSynchronize();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-		goto Error;
-	}
-
-	cudaStatus = cudaMemcpy(&occupied, d_board, sizeof(uint), cudaMemcpyDeviceToHost);
+	/*cudaStatus = cudaMemcpy(&occupied, d_board, sizeof(uint), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess)
 	{
 		fprintf(stderr, "cudaMemcpy failed!");
@@ -257,12 +269,16 @@ int main()
 	{
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
-	}
+	}*/
 
 	//Decode(checkersBoard, occupied, color, kings);
 	//DisplayBoard(checkersBoard);
 
-	printf("Symulacja zakonczona!");
+	cudaEventSynchronize(stop);
+	float miliseconds = 0;
+	cudaEventElapsedTime(&miliseconds, start, stop);
+	miliseconds /= 1000;
+	printf("Symulacja zakonczona po %f sekundach", miliseconds);
 
 
 	//MakeMove(&occupied, &color, &random);
@@ -319,17 +335,21 @@ Error:
 __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colors, uint* o_kings)
 {
 	int blacks = 12, whites = 12;
-	//RandomResult m_random = *o_random;
-	//uint m_board = *o_board;
-	//uint m_colors = *o_colors;
-	//uint m_kings = *o_kings;
-	RandomResult* random = o_random;
-	uint* board = o_board;
-	uint* colors = o_colors;
-	uint* kings = o_kings;
+	RandomResult m_random = *o_random;
+	m_random.w += threadIdx.x;
+	m_random.x += blockIdx.x;
+	m_random.y += threadIdx.x;
+	m_random.z += blockIdx.x;
+	uint m_board = *o_board;
+	uint m_colors = *o_colors;
+	uint m_kings = *o_kings;
+	RandomResult* random = &m_random;
+	uint* board = &m_board;
+	uint* colors = &m_colors;
+	uint* kings = &m_kings;
 
-	char checkersBoard[8][8];
-	Decode(checkersBoard, *board, *colors, *kings);
+	//char checkersBoard[8][8];
+	//Decode(checkersBoard, *board, *colors, *kings);
 
 	int result;
 	for (int i = 0; i < 100; i++)
@@ -358,9 +378,9 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 				whites -= result;
 				if (whites == 0)
 				{
-					printf("Biali przegrali!\n");
-					Decode(checkersBoard, *board, ~(*colors), *kings);
-					DisplayBoard(checkersBoard);
+					//printf("Biali przegrali!\n");
+					//Decode(checkersBoard, *board, ~(*colors), *kings);
+					//DisplayBoard(checkersBoard);
 					break;
 				}
 			}
@@ -369,14 +389,14 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 				blacks -= result;
 				if (blacks == 0)
 				{
-					printf("Czarni przegrali\n");
-					Decode(checkersBoard, *board, *colors, *kings);
-					DisplayBoard(checkersBoard);
+					//printf("Czarni przegrali\n");
+					//Decode(checkersBoard, *board, *colors, *kings);
+					//DisplayBoard(checkersBoard);
 					break;
 				}
 			}
 		}
-		if (i % 2)
+		/*if (i % 2)
 		{
 			Decode(checkersBoard, *board, ~(*colors), *kings);
 			printf("Y\n");
@@ -386,8 +406,8 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 			Decode(checkersBoard, *board, *colors, *kings);
 			printf("X\n");
 		}
-		printf("Biali: %d Czarni: %d\n", whites, blacks);
-		DisplayBoard(checkersBoard);
+		printf("Biali: %d Czarni: %d\n", whites, blacks);*/
+		//DisplayBoard(checkersBoard);
 		*colors = ~(*colors);
 
 	}
@@ -395,84 +415,84 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 	//PrintBits(*colors);
 	//PrintBits(*kings);
 }
-cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
-{
-	int* dev_a = 0;
-	int* dev_b = 0;
-	int* dev_c = 0;
-	cudaError_t cudaStatus;
-
-	// Choose which GPU to run on, change this on a multi-GPU system.
-	cudaStatus = cudaSetDevice(0);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-		goto Error;
-	}
-
-	// Allocate GPU buffers for three vectors (two input, one output)    .
-	cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
-	// Copy input vectors from host memory to GPU buffers.
-	cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-	// Launch a kernel on the GPU with one thread for each element.
-	addKernel << <1, size >> > (dev_c, dev_a, dev_b);
-
-	// Check for any errors launching the kernel
-	cudaStatus = cudaGetLastError();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-		goto Error;
-	}
-
-	// cudaDeviceSynchronize waits for the kernel to finish, and returns
-	// any errors encountered during the launch.
-	cudaStatus = cudaDeviceSynchronize();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-		goto Error;
-	}
-
-	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-Error:
-	cudaFree(dev_c);
-	cudaFree(dev_a);
-	cudaFree(dev_b);
-
-	return cudaStatus;
-}
+//cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
+//{
+//	int* dev_a = 0;
+//	int* dev_b = 0;
+//	int* dev_c = 0;
+//	cudaError_t cudaStatus;
+//
+//	// Choose which GPU to run on, change this on a multi-GPU system.
+//	cudaStatus = cudaSetDevice(0);
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+//		goto Error;
+//	}
+//
+//	// Allocate GPU buffers for three vectors (two input, one output)    .
+//	cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMalloc failed!");
+//		goto Error;
+//	}
+//
+//	cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMalloc failed!");
+//		goto Error;
+//	}
+//
+//	cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMalloc failed!");
+//		goto Error;
+//	}
+//
+//	// Copy input vectors from host memory to GPU buffers.
+//	cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMemcpy failed!");
+//		goto Error;
+//	}
+//
+//	cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMemcpy failed!");
+//		goto Error;
+//	}
+//
+//	// Launch a kernel on the GPU with one thread for each element.
+//	addKernel << <1, size >> > (dev_c, dev_a, dev_b);
+//
+//	// Check for any errors launching the kernel
+//	cudaStatus = cudaGetLastError();
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+//		goto Error;
+//	}
+//
+//	// cudaDeviceSynchronize waits for the kernel to finish, and returns
+//	// any errors encountered during the launch.
+//	cudaStatus = cudaDeviceSynchronize();
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+//		goto Error;
+//	}
+//
+//	// Copy output vector from GPU buffer to host memory.
+//	cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
+//	if (cudaStatus != cudaSuccess) {
+//		fprintf(stderr, "cudaMemcpy failed!");
+//		goto Error;
+//	}
+//
+//Error:
+//	cudaFree(dev_c);
+//	cudaFree(dev_a);
+//	cudaFree(dev_b);
+//
+//	return cudaStatus;
+//}
 
 __device__ __host__ uint TausStep(uint z, int S1, int S2, int S3, uint M)
 {
@@ -789,7 +809,6 @@ __device__ __host__ int MakeMove(uint* occupied, uint* color, uint* kings, Rando
 	}
 	//if (killing) printf("Musze bic!\n");
 	t_occupied = (*occupied) & (*color);
-
 	int moves = (int)((random->value + 0.5) / (1.0 / count)) + 1;
 	//int moves = 1;
 	count = 0;
