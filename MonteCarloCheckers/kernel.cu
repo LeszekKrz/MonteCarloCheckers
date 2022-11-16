@@ -17,8 +17,8 @@ __global__ void addKernel(int* c, const int* a, const int* b)
 	c[i] = a[i] + b[i];
 }
 
-uint TausStep(uint, int, int, int, uint);
-uint LCGStep(uint z, uint A, uint C);
+__device__ __host__ uint TausStep(uint, int, int, int, uint);
+__device__ __host__ uint LCGStep(uint z, uint A, uint C);
 
 typedef struct RandomResult
 {
@@ -29,21 +29,22 @@ typedef struct RandomResult
 	float value;
 } RandomResult;
 
-RandomResult Random(RandomResult);
+__device__ __host__ RandomResult Random(RandomResult);
 
-void DisplayBoard(char board[8][8]);
+__device__ __host__ void DisplayBoard(char board[8][8]);
 
-void Encode(char board[8][8], uint*, uint*, uint*);
-void Decode(char board[8][8], uint, uint, uint);
+__device__ __host__ void Encode(char board[8][8], uint*, uint*, uint*);
+__device__ __host__ void Decode(char board[8][8], uint, uint, uint);
 
-void PrintBits(uint);
+__device__ __host__ void PrintBits(uint);
 
-void Move(uint*, uint*, uint*, int, int);
-void Remove(uint*, uint*, int);
+__device__ __host__ void Move(uint*, uint*, uint*, int, int);
+__device__ __host__ void Remove(uint*, uint*, int);
 
-int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
+__global__ void SimulateGame(RandomResult*, uint*, uint*, uint*);
+__device__ __host__ int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
 
-bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
+__device__ __host__ bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
 
 
 int main()
@@ -96,66 +97,174 @@ int main()
 	PrintBits(occupied);
 	PrintBits(color);
 	PrintBits(kings);
-	int blacks = 12, whites = 12;
-	int result;
-	for (int i = 0; i < 100; i++)
-	{
-		result = MakeMove(&occupied, &color, &kings, &random, i % 2);
-		if (result == -1)
-		{
-			printf("Koniec gry!\n");
-			printf("Tury: %d Biali: %d Czarni: %d\n", i, whites, blacks);
-			if (i % 2)
-			{
-				printf("Czarni nie moga wykonac ruchu!\n");
-			}
-			else
-			{
-				printf("Biali nie moga wykonac ruchu!\n");
-			}
-			Decode(checkersBoard, occupied, color, kings);
-			DisplayBoard(checkersBoard);
-			break;
-		}
-		else if (result > 0)
-		{
-			if (i % 2)
-			{
-				whites -= result;
-				if (whites == 0)
-				{
-					printf("Biali przegrali!\n");
-					Decode(checkersBoard, occupied, ~color, kings);
-					DisplayBoard(checkersBoard);
-					break;
-				}
-			}
-			else
-			{
-				blacks -= result;
-				if (blacks == 0)
-				{
-					printf("Czarni przegrali\n");
-					Decode(checkersBoard, occupied, color, kings);
-					DisplayBoard(checkersBoard);
-					break;
-				}
-			}
-		}
-		if (i % 2)
-		{
-			Decode(checkersBoard, occupied, ~color, kings);
-			printf("Y\n");
-		}
-		else
-		{
-			Decode(checkersBoard, occupied, color, kings);
-			printf("X\n");
-		}
-		printf("Biali: %d Czarni: %d\n", whites, blacks);
-		DisplayBoard(checkersBoard);
-		color = ~color;
+	//int blacks = 12, whites = 12;
+	//int result;
+	//for (int i = 0; i < 100; i++)
+	//{
+	//	result = MakeMove(&occupied, &color, &kings, &random, i % 2);
+	//	if (result == -1)
+	//	{
+	//		printf("Koniec gry!\n");
+	//		printf("Tury: %d Biali: %d Czarni: %d\n", i, whites, blacks);
+	//		if (i % 2)
+	//		{
+	//			printf("Czarni nie moga wykonac ruchu!\n");
+	//		}
+	//		else
+	//		{
+	//			printf("Biali nie moga wykonac ruchu!\n");
+	//		}
+	//		Decode(checkersBoard, occupied, color, kings);
+	//		DisplayBoard(checkersBoard);
+	//		break;
+	//	}
+	//	else if (result > 0)
+	//	{
+	//		if (i % 2)
+	//		{
+	//			whites -= result;
+	//			if (whites == 0)
+	//			{
+	//				printf("Biali przegrali!\n");
+	//				Decode(checkersBoard, occupied, ~color, kings);
+	//				DisplayBoard(checkersBoard);
+	//				break;
+	//			}
+	//		}
+	//		else
+	//		{
+	//			blacks -= result;
+	//			if (blacks == 0)
+	//			{
+	//				printf("Czarni przegrali\n");
+	//				Decode(checkersBoard, occupied, color, kings);
+	//				DisplayBoard(checkersBoard);
+	//				break;
+	//			}
+	//		}
+	//	}
+	//	if (i % 2)
+	//	{
+	//		Decode(checkersBoard, occupied, ~color, kings);
+	//		printf("Y\n");
+	//	}
+	//	else
+	//	{
+	//		Decode(checkersBoard, occupied, color, kings);
+	//		printf("X\n");
+	//	}
+	//	printf("Biali: %d Czarni: %d\n", whites, blacks);
+	//	DisplayBoard(checkersBoard);
+	//	color = ~color;
+	//}
+
+
+
+
+	RandomResult* d_random = 0;
+	uint* d_board = 0;
+	uint* d_colors = 0;
+	uint* d_kings = 0;
+
+	cudaError_t cudaStatus;
+
+	// Choose which GPU to run on, change this on a multi-GPU system.
+	cudaStatus = cudaSetDevice(0);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+		goto Error;
 	}
+
+	cudaStatus = cudaMalloc((void**)&d_random, sizeof(RandomResult));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&d_board, sizeof(uint));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&d_colors, sizeof(uint));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&d_kings, sizeof(uint));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
+	// Copy input vectors from host memory to GPU buffers.
+	cudaStatus = cudaMemcpy(d_random, &random, sizeof(RandomResult), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(d_board, &occupied, sizeof(uint), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+	
+	cudaStatus = cudaMemcpy(d_colors, &color, sizeof(uint), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+	
+	cudaStatus = cudaMemcpy(d_kings, &kings, sizeof(uint), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	SimulateGame << <1, 1 >> > (d_random, d_board, d_colors, d_kings);
+
+	cudaStatus = cudaGetLastError();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		goto Error;
+	}
+
+	cudaStatus = cudaDeviceSynchronize();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(&occupied, d_board, sizeof(uint), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess)
+	{
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(&color, d_colors, sizeof(uint), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess)
+	{
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(&kings, d_kings, sizeof(uint), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess)
+	{
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	//Decode(checkersBoard, occupied, color, kings);
+	//DisplayBoard(checkersBoard);
+
+	printf("Symulacja zakonczona!");
+
+
 	//MakeMove(&occupied, &color, &random);
 	//Decode(checkersBoard, occupied, color);
 	//DisplayBoard(checkersBoard);
@@ -196,11 +305,96 @@ int main()
 	  //    fprintf(stderr, "cudaDeviceReset failed!");
 	  //    return 1;
 	  //}
+Error:
+	cudaFree(d_random);
+	cudaFree(d_board);
+	cudaFree(d_colors);
+	cudaFree(d_kings);
 
 	return 0;
 }
 
 // Helper function for using CUDA to add vectors in parallel.
+
+__global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colors, uint* o_kings)
+{
+	int blacks = 12, whites = 12;
+	//RandomResult m_random = *o_random;
+	//uint m_board = *o_board;
+	//uint m_colors = *o_colors;
+	//uint m_kings = *o_kings;
+	RandomResult* random = o_random;
+	uint* board = o_board;
+	uint* colors = o_colors;
+	uint* kings = o_kings;
+
+	char checkersBoard[8][8];
+	Decode(checkersBoard, *board, *colors, *kings);
+
+	int result;
+	for (int i = 0; i < 100; i++)
+	{
+		result = MakeMove(board, colors, kings, random, i % 2);
+		if (result == -1)
+		{
+			/*printf("Koniec gry!\n");
+			printf("Tury: %d Biali: %d Czarni: %d\n", i, whites, blacks);
+			if (i % 2)
+			{
+				printf("Czarni nie moga wykonac ruchu!\n");
+			}
+			else
+			{
+				printf("Biali nie moga wykonac ruchu!\n");
+			}*/
+			//Decode(checkersBoard, occupied, color, kings);
+			//DisplayBoard(checkersBoard);
+			break;
+		}
+		else if (result > 0)
+		{
+			if (i % 2)
+			{
+				whites -= result;
+				if (whites == 0)
+				{
+					printf("Biali przegrali!\n");
+					Decode(checkersBoard, *board, ~(*colors), *kings);
+					DisplayBoard(checkersBoard);
+					break;
+				}
+			}
+			else
+			{
+				blacks -= result;
+				if (blacks == 0)
+				{
+					printf("Czarni przegrali\n");
+					Decode(checkersBoard, *board, *colors, *kings);
+					DisplayBoard(checkersBoard);
+					break;
+				}
+			}
+		}
+		if (i % 2)
+		{
+			Decode(checkersBoard, *board, ~(*colors), *kings);
+			printf("Y\n");
+		}
+		else
+		{
+			Decode(checkersBoard, *board, *colors, *kings);
+			printf("X\n");
+		}
+		printf("Biali: %d Czarni: %d\n", whites, blacks);
+		DisplayBoard(checkersBoard);
+		*colors = ~(*colors);
+
+	}
+	//PrintBits(*board);
+	//PrintBits(*colors);
+	//PrintBits(*kings);
+}
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
 {
 	int* dev_a = 0;
@@ -248,7 +442,7 @@ cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
 	}
 
 	// Launch a kernel on the GPU with one thread for each element.
-	//addKernel << <1, size >> > (dev_c, dev_a, dev_b);
+	addKernel << <1, size >> > (dev_c, dev_a, dev_b);
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
@@ -280,18 +474,18 @@ Error:
 	return cudaStatus;
 }
 
-uint TausStep(uint z, int S1, int S2, int S3, uint M)
+__device__ __host__ uint TausStep(uint z, int S1, int S2, int S3, uint M)
 {
 	uint b = (((z << S1) ^ z) >> S2);
 	return (((z & M) << S3) ^ b);
 }
 
-uint LCGStep(uint z, uint A, uint C)
+__device__ __host__ uint LCGStep(uint z, uint A, uint C)
 {
 	return (A * z + C);
 }
 
-RandomResult Random(RandomResult random)
+__device__ __host__ RandomResult Random(RandomResult random)
 {
 	RandomResult result;
 	result.x = TausStep(random.x, 13, 19, 12, 4294967294);
@@ -304,7 +498,7 @@ RandomResult Random(RandomResult random)
 	return result;
 }
 
-void DisplayBoard(char board[8][8])
+__device__ __host__ void DisplayBoard(char board[8][8])
 {
 	for (int i = 0; i < 8; i++)
 	{
@@ -317,7 +511,7 @@ void DisplayBoard(char board[8][8])
 	printf("\n");
 }
 
-void Encode(char board[8][8], uint* occupied, uint* color, uint* kings)
+__device__ __host__ void Encode(char board[8][8], uint* occupied, uint* color, uint* kings)
 {
 	*occupied = 0;
 	*color = 0;
@@ -347,7 +541,7 @@ void Encode(char board[8][8], uint* occupied, uint* color, uint* kings)
 	}
 }
 
-void Decode(char board[8][8], uint occupied, uint color, uint kings)
+__device__ __host__ void Decode(char board[8][8], uint occupied, uint color, uint kings)
 {
 	int k;
 	for (int i = 0; i < 8; i++)
@@ -395,13 +589,9 @@ void PrintBits(uint s)
 	printf("\n");
 }
 
-//Coordinates Convert(int n)
-//{
-//    return ((n/4) % 2 == 0)?()
-//}
 
 
-void Move(uint* board, uint* color, uint* kings, int n, int d)
+__device__ __host__ void Move(uint* board, uint* color, uint* kings, int n, int d)
 {
 	(*board) &= ~(1 << n);
 	(*board) |= 1 << (n + d);
@@ -413,13 +603,13 @@ void Move(uint* board, uint* color, uint* kings, int n, int d)
 	}
 }
 
-void Remove(uint* board, uint* kings, int n)
+__device__ __host__ void Remove(uint* board, uint* kings, int n)
 {
 	(*board) &= ~(1 << n);
 	(*kings) &= ~(1 << n);
 }
 
-int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, bool flag) // zakladam ze rusza sie tylko kolor oznaczony 1
+__device__ __host__ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, bool flag) // zakladam ze rusza sie tylko kolor oznaczony 1
 {
 	*random = Random(*random);
 	uint t_occupied = (*occupied) & (*color);
@@ -465,7 +655,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							}
 							if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 4 - k)))
 							{
-								printf("morderczy krol\n");
+								//printf("morderczy krol\n");
 								killing = true;
 							}
 							k = (n >> 2) & 1;
@@ -501,7 +691,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							}
 							if ((t_n >> 2) > 0 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n - 3 - k)))
 							{
-								printf("Morderczy krol\n");
+								//printf("Morderczy krol\n");
 								killing = true;
 							}
 							k = (n >> 2) & 1;
@@ -540,7 +730,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							}
 							if ((t_n >> 2) < 7 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n + 4 - k)))
 							{
-								printf("Morderczy krol\n");
+								//printf("Morderczy krol\n");
 								killing = true;
 							}
 							k = (n >> 2) & 1;
@@ -576,7 +766,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 							}
 							if ((t_n >> 2) < 7 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(*occupied & (1 << t_n + 5 - k)))
 							{
-								printf("Morderczy krol\n");
+								//printf("Morderczy krol\n");
 								killing = true;
 							}
 							k = (n >> 2) & 1;
@@ -594,10 +784,10 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 
 	if (count == 0)
 	{
-		printf("Nie można wykonać ruchu!\n");
+		//printf("Nie można wykonać ruchu!\n");
 		return -1;
 	}
-	if (killing) printf("Musze bic!\n");
+	//if (killing) printf("Musze bic!\n");
 	t_occupied = (*occupied) & (*color);
 
 	int moves = (int)((random->value + 0.5) / (1.0 / count)) + 1;
@@ -987,7 +1177,7 @@ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, boo
 	}
 }
 
-bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random, int* n)
+__device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random, int* n)
 {
 	int count = 0;
 	int k = (*n >> 2) & 1;
@@ -1005,7 +1195,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					count++;
 					if (count == moves)
 					{
-						printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
+						//printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
 						Move(occupied, color, kings, *n, -9);
 						Remove(occupied, kings,*n - 4 - k);
 						*n = *n - 9;
@@ -1020,7 +1210,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					count++;
 					if (count == moves)
 					{
-						printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
+						//printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
 						Move(occupied, color, kings, *n, -7);
 						Remove(occupied, kings,*n - 3 - k);
 						*n = *n - 7;
@@ -1038,7 +1228,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					count++;
 					if (count == moves)
 					{
-						printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
+						//printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
 						Move(occupied, color, kings, *n, 7);
 						Remove(occupied, kings,*n + 4 - k);
 						*n = *n + 7;
@@ -1053,7 +1243,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 					count++;
 					if (count == moves)
 					{
-						printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
+						//printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
 						Move(occupied, color, kings, *n, 9);
 						Remove(occupied, kings,*n + 5 - k);
 						*n = *n + 9;
@@ -1065,7 +1255,7 @@ bool MultipleHit(uint* occupied, uint* color, uint* kings, RandomResult* random,
 
 		if (count == 0) // koniec bicia
 		{
-			printf("Koniec bicia!\n");
+			//printf("Koniec bicia!\n");
 			return false;
 		}
 	}
