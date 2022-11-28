@@ -29,6 +29,15 @@ typedef struct RandomResult
 	float value;
 } RandomResult;
 
+typedef struct Possibilities
+{
+	int origins[32];
+	uint boards[32];
+	uint colors[32];
+	uint kings[32];
+	int wins[32];
+};
+
 __device__ __host__ RandomResult Random(RandomResult);
 
 __device__ __host__ void DisplayBoard(char board[8][8]);
@@ -41,10 +50,15 @@ __device__ __host__ void PrintBits(uint);
 __device__ __host__ void Move(uint*, uint*, uint*, int, int);
 __device__ __host__ void Remove(uint*, uint*, int);
 
-__global__ void SimulateGame(RandomResult*, uint*, uint*, uint*);
+__global__ void SimulateGame(RandomResult*, Possibilities*, int);
 __device__ __host__ int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
 
 __device__ __host__ bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
+
+int FindPossibleMoves(uint, uint, uint, int, Possibilities*);
+bool FindPossibleMultipleHit(uint, uint, uint, int, int, int, int*, Possibilities*, int);
+void AddPossible(uint, uint, uint, int, int, int, int, Possibilities*);
+void DisplayPossibilities(Possibilities, int);
 
 
 int main()
@@ -53,7 +67,15 @@ int main()
 	const int a[arraySize] = { 1, 2, 3, 4, 5 };
 	const int b[arraySize] = { 10, 20, 30, 40, 50 };
 	int c[arraySize] = { 0 };
-
+	Possibilities possibilities;
+	for (int i = 0; i < 32; i++)
+	{
+		possibilities.origins[i] = 0;
+		possibilities.boards[i] = 0;
+		possibilities.colors[i] = 0;
+		possibilities.kings[i] = 0;
+		possibilities.wins[i] = 0;
+	}
 
 	srand(time(NULL));
 	RandomResult random;
@@ -97,67 +119,98 @@ int main()
 	PrintBits(occupied);
 	PrintBits(color);
 	PrintBits(kings);
-	//int blacks = 12, whites = 12;
-	//int result;
-	//for (int i = 0; i < 100; i++)
-	//{
-	//	result = MakeMove(&occupied, &color, &kings, &random, i % 2);
-	//	if (result == -1)
-	//	{
-	//		printf("Koniec gry!\n");
-	//		printf("Tury: %d Biali: %d Czarni: %d\n", i, whites, blacks);
-	//		if (i % 2)
-	//		{
-	//			printf("Czarni nie moga wykonac ruchu!\n");
-	//		}
-	//		else
-	//		{
-	//			printf("Biali nie moga wykonac ruchu!\n");
-	//		}
-	//		Decode(checkersBoard, occupied, color, kings);
-	//		DisplayBoard(checkersBoard);
-	//		break;
-	//	}
-	//	else if (result > 0)
-	//	{
-	//		if (i % 2)
-	//		{
-	//			whites -= result;
-	//			if (whites == 0)
-	//			{
-	//				printf("Biali przegrali!\n");
-	//				Decode(checkersBoard, occupied, ~color, kings);
-	//				DisplayBoard(checkersBoard);
-	//				break;
-	//			}
-	//		}
-	//		else
-	//		{
-	//			blacks -= result;
-	//			if (blacks == 0)
-	//			{
-	//				printf("Czarni przegrali\n");
-	//				Decode(checkersBoard, occupied, color, kings);
-	//				DisplayBoard(checkersBoard);
-	//				break;
-	//			}
-	//		}
-	//	}
-	//	if (i % 2)
-	//	{
-	//		Decode(checkersBoard, occupied, ~color, kings);
-	//		printf("Y\n");
-	//	}
-	//	else
-	//	{
-	//		Decode(checkersBoard, occupied, color, kings);
-	//		printf("X\n");
-	//	}
-	//	printf("Biali: %d Czarni: %d\n", whites, blacks);
-	//	DisplayBoard(checkersBoard);
-	//	color = ~color;
-	//}
+	int blacks = 12, whites = 12;
+	int result;
+	int moves = 0;
+	int maxMoves = 0;
+	for (int j = 0; j < 0; j++)
+	{
+		blacks = 12;
+		whites = 12;
+		for (int i = 0; i < 8; i++)
+		{
+			for (int j = 0; j < 8; j++)
+			{
+				checkersBoard[i][j] = '0';
+			}
+		}
+		for (int i = 0; i < 3; i++)
+		{
+			for (int j = 1 - i % 2; j < 8; j += 2)
+			{
+				checkersBoard[i][j] = 'Y';
+				checkersBoard[7 - i][7 - j] = 'X';
+			}
+		}
+		occupied = 0;
+		color = 0;
+		kings = 0;
 
+		Encode(checkersBoard, &occupied, &color, &kings);
+		for (int i = 0; i < 100; i++)
+		{
+			moves = FindPossibleMoves(occupied, color, kings, i % 2, &possibilities);
+			//DisplayPossibilities(possibilities, moves);
+			if (moves > maxMoves) maxMoves = moves;
+			//printf("%d possible moves \n", moves);
+			result = MakeMove(&occupied, &color, &kings, &random, i % 2);
+			if (result == -1)
+			{
+				/*printf("Koniec gry!\n");
+				printf("Tury: %d Biali: %d Czarni: %d\n", i, whites, blacks);
+				if (i % 2)
+				{
+					printf("Czarni nie moga wykonac ruchu!\n");
+				}
+				else
+				{
+					printf("Biali nie moga wykonac ruchu!\n");
+				}
+				Decode(checkersBoard, occupied, color, kings);
+				DisplayBoard(checkersBoard);*/
+				break;
+			}
+			else if (result > 0)
+			{
+				if (i % 2)
+				{
+					whites -= result;
+					if (whites == 0)
+					{
+						//printf("Biali przegrali!\n");
+						//Decode(checkersBoard, occupied, ~color, kings);
+						//DisplayBoard(checkersBoard);
+						break;
+					}
+				}
+				else
+				{
+					blacks -= result;
+					if (blacks == 0)
+					{
+						//printf("Czarni przegrali\n");
+						//Decode(checkersBoard, occupied, color, kings);
+						//DisplayBoard(checkersBoard);
+						break;
+					}
+				}
+			}
+			/*if (i % 2)
+			{
+				Decode(checkersBoard, occupied, ~color, kings);
+				printf("Y\n");
+			}
+			else
+			{
+				Decode(checkersBoard, occupied, color, kings);
+				printf("X\n");
+			}
+			printf("Biali: %d Czarni: %d\n", whites, blacks);
+			DisplayBoard(checkersBoard);*/
+			color = ~color;
+		}
+	}
+	printf("\n Max ruchow: %d \n", maxMoves);
 
 
 
@@ -165,10 +218,24 @@ int main()
 	uint* d_board = 0;
 	uint* d_colors = 0;
 	uint* d_kings = 0;
+	Possibilities* d_possibilities = 0;
 
 	cudaError_t cudaStatus;
 
+	int blocks = FindPossibleMoves(occupied, color, kings, 0, &possibilities);
+	printf("%d mozliwosci\n", blocks);
+	//DisplayPossibilities(possibilities, blocks);
+	//for (int i = 0; i < blocks; i++)
+	//{
+	//	printf("%d\n", possibilities.boards[i]);
+	//}
+
 	// Choose which GPU to run on, change this on a multi-GPU system.
+	cudaEvent_t m_start, m_stop;
+	cudaEventCreate(&m_start);
+	cudaEventCreate(&m_stop);
+	
+	cudaEventRecord(m_start);
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
@@ -176,6 +243,12 @@ int main()
 	}
 
 	cudaStatus = cudaMalloc((void**)&d_random, sizeof(RandomResult));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&d_possibilities, sizeof(Possibilities));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
@@ -199,8 +272,10 @@ int main()
 		goto Error;
 	}
 
+
 	// Copy input vectors from host memory to GPU buffers.
-	cudaStatus = cudaMemcpy(d_random, &random, sizeof(RandomResult), cudaMemcpyHostToDevice);
+
+	cudaStatus = cudaMemcpy(d_possibilities, &possibilities, sizeof(Possibilities), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
@@ -223,6 +298,13 @@ int main()
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
+
+	cudaEventRecord(m_stop);
+	cudaEventSynchronize(m_stop);
+	float m_seconds = 0;
+	cudaEventElapsedTime(&m_seconds, m_start, m_stop);
+	m_seconds /= 1000;
+	printf("Alokowanie pamieci zajelo %f sekund\n", m_seconds);
 	
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
@@ -233,8 +315,13 @@ int main()
 	printf("Poczatek symulacji...\n");
 	for (int i = 0; i < 1; i++)
 	{
-
-		SimulateGame << <16, 500 >> > (d_random, d_board, d_colors, d_kings);
+		cudaStatus = cudaMemcpy(d_random, &random, sizeof(RandomResult), cudaMemcpyHostToDevice);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+		dim3 blocks3(blocks, 10, 1);
+		SimulateGame << <blocks3,  1000>> > (d_random, d_possibilities, 1);
 
 		cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
@@ -247,17 +334,24 @@ int main()
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
 			goto Error;
 		}
-	}
-	cudaEventRecord(stop);
 
-	/*cudaStatus = cudaMemcpy(&occupied, d_board, sizeof(uint), cudaMemcpyDeviceToHost);
+		random.w += rand() % 100;
+		random.x += rand() % 100;
+		random.y += rand() % 100;
+		random.z += rand() % 100;
+
+	}
+	cudaStatus = cudaMemcpy(&possibilities, d_possibilities, sizeof(Possibilities), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess)
 	{
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
+	cudaEventRecord(stop);
+	for (int i = 0; i < blocks; i++) printf("Blok %d: %d\n", i, possibilities.wins[i]);
 
-	cudaStatus = cudaMemcpy(&color, d_colors, sizeof(uint), cudaMemcpyDeviceToHost);
+
+	/*cudaStatus = cudaMemcpy(&color, d_colors, sizeof(uint), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess)
 	{
 		fprintf(stderr, "cudaMemcpy failed!");
@@ -332,27 +426,31 @@ Error:
 
 // Helper function for using CUDA to add vectors in parallel.
 
-__global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colors, uint* o_kings)
+__global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilites, int turn)
 {
 	int blacks = 12, whites = 12;
 	RandomResult m_random = *o_random;
-	m_random.w += threadIdx.x;
-	m_random.x += blockIdx.x;
-	m_random.y += threadIdx.x;
-	m_random.z += blockIdx.x;
-	uint m_board = *o_board;
-	uint m_colors = *o_colors;
-	uint m_kings = *o_kings;
+	m_random.w += threadIdx.x * (o_possibilites->boards[blockIdx.x] >> 26);
+	m_random.x += blockIdx.x * (o_possibilites->boards[blockIdx.x] >> 26);
+	m_random.y += blockIdx.y * (o_possibilites->boards[blockIdx.x] >> 26);
+	m_random.z += o_possibilites->origins[blockIdx.x] * (o_possibilites->boards[blockIdx.x] >> 26);
+	uint m_board = o_possibilites->boards[blockIdx.x];
+	uint m_colors = o_possibilites->colors[blockIdx.x];
+	uint m_kings = o_possibilites->kings[blockIdx.x];
 	RandomResult* random = &m_random;
 	uint* board = &m_board;
 	uint* colors = &m_colors;
 	uint* kings = &m_kings;
+	
 
-	//char checkersBoard[8][8];
-	//Decode(checkersBoard, *board, *colors, *kings);
+	/*char checkersBoard[8][8];
+	Decode(checkersBoard, *board, *colors, *kings);
+	DisplayBoard(checkersBoard);*/
+	//PrintBits(m_board);
+	//printf("%d\n", m_board);
 
 	int result;
-	for (int i = 0; i < 100; i++)
+	for (int i = turn; i < 100; i++)
 	{
 		result = MakeMove(board, colors, kings, random, i % 2);
 		if (result == -1)
@@ -378,9 +476,9 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 				whites -= result;
 				if (whites == 0)
 				{
-					//printf("Biali przegrali!\n");
-					//Decode(checkersBoard, *board, ~(*colors), *kings);
-					//DisplayBoard(checkersBoard);
+					/*printf("Biali przegrali!\n");
+					Decode(checkersBoard, *board, ~(*colors), *kings);
+					DisplayBoard(checkersBoard);*/
 					break;
 				}
 			}
@@ -389,27 +487,33 @@ __global__ void SimulateGame(RandomResult* o_random, uint* o_board, uint* o_colo
 				blacks -= result;
 				if (blacks == 0)
 				{
-					//printf("Czarni przegrali\n");
-					//Decode(checkersBoard, *board, *colors, *kings);
-					//DisplayBoard(checkersBoard);
+					/*printf("Czarni przegrali\n");
+					Decode(checkersBoard, *board, *colors, *kings);
+					DisplayBoard(checkersBoard);*/
 					break;
 				}
 			}
 		}
-		/*if (i % 2)
-		{
-			Decode(checkersBoard, *board, ~(*colors), *kings);
-			printf("Y\n");
-		}
-		else
-		{
-			Decode(checkersBoard, *board, *colors, *kings);
-			printf("X\n");
-		}
-		printf("Biali: %d Czarni: %d\n", whites, blacks);*/
+		//if (i % 2)
+		//{
+		//	Decode(checkersBoard, *board, ~(*colors), *kings);
+		//	printf("Y\n");
+		//}
+		//else
+		//{
+		//	Decode(checkersBoard, *board, *colors, *kings);
+		//	printf("X\n");
+		//}
+		//printf("Biali: %d Czarni: %d\n", whites, blacks);
 		//DisplayBoard(checkersBoard);
 		*colors = ~(*colors);
-
+	}
+	blacks = __syncthreads_count(whites);
+	if (threadIdx.x == 0)
+	{
+		printf("Biali wygrali %d gier w bloku %d\n", blacks, blockIdx.x);
+		//o_possibilites->wins[blockIdx.x] += blacks;
+		atomicAdd(&(o_possibilites->wins[blockIdx.x]), blacks);
 	}
 	//PrintBits(*board);
 	//PrintBits(*colors);
@@ -627,6 +731,16 @@ __device__ __host__ void Remove(uint* board, uint* kings, int n)
 {
 	(*board) &= ~(1 << n);
 	(*kings) &= ~(1 << n);
+}
+
+void TempRemove(uint* board, int n)
+{
+	(*board) &= ~(1 << n);
+}
+
+void Add(uint* board, int n)
+{
+	(*board) |= 1 << n;
 }
 
 __device__ __host__ int MakeMove(uint* occupied, uint* color, uint* kings, RandomResult* random, bool flag) // zakladam ze rusza sie tylko kolor oznaczony 1
@@ -1216,7 +1330,7 @@ __device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, R
 					{
 						//printf("Kontynuuje bicie! %d -> %d\n", *n, -9);
 						Move(occupied, color, kings, *n, -9);
-						Remove(occupied, kings,*n - 4 - k);
+						Remove(occupied, kings, *n - 4 - k);
 						*n = *n - 9;
 						return true;
 					}
@@ -1231,7 +1345,7 @@ __device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, R
 					{
 						//printf("Kontynuuje bicie! %d -> %d\n", *n, -7);
 						Move(occupied, color, kings, *n, -7);
-						Remove(occupied, kings,*n - 3 - k);
+						Remove(occupied, kings, *n - 3 - k);
 						*n = *n - 7;
 						return true;
 					}
@@ -1249,7 +1363,7 @@ __device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, R
 					{
 						//printf("Kontynuuje bicie! %d -> %d\n", *n, 7);
 						Move(occupied, color, kings, *n, 7);
-						Remove(occupied, kings,*n + 4 - k);
+						Remove(occupied, kings, *n + 4 - k);
 						*n = *n + 7;
 						return true;
 					}
@@ -1264,7 +1378,7 @@ __device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, R
 					{
 						//printf("Kontynuuje bicie! %d -> %d\n", *n, 9);
 						Move(occupied, color, kings, *n, 9);
-						Remove(occupied, kings,*n + 5 - k);
+						Remove(occupied, kings, *n + 5 - k);
 						*n = *n + 9;
 						return true;
 					}
@@ -1277,5 +1391,326 @@ __device__ __host__ bool MultipleHit(uint* occupied, uint* color, uint* kings, R
 			//printf("Koniec bicia!\n");
 			return false;
 		}
+	}
+}
+
+int FindPossibleMoves(uint occupied, uint color, uint kings, int flag, Possibilities* possibilities)
+{
+	int possible = 0;
+	int k, n = 0;
+	int t_n;
+	uint t_occupied = occupied & color;
+	uint enemies = occupied & ~color;
+	while (t_occupied > 0) // liczenie mozliwych ruchow
+	{
+		if (t_occupied & 1) // na n-tym miejscu jest pionek dobrego koloru
+		{
+			k = (n >> 2) & 1; // (n / 4) % 2
+			if ((n >> 2) > 0) // drugi rzad, moze w gore
+			{
+				if ((n & 3) + 1 - k) // druga kolumna, moze w lewo
+				{
+					if (enemies & (1 << n - 4 - k)) // zajete
+					{
+						if ((n >> 2) > 1 && (n & 3) > 0) // podwojny skos w lewo gora
+						{
+							if (!((occupied) & (1 << n - 9))) //podwójny skos mozliwy
+							{
+								//printf("Znaleziono %d -> lglg", n);
+								if (FindPossibleMultipleHit(occupied, color, kings, n, -9, n - 4 - k, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, -9, n - 4 - k, possible, possibilities);
+									possible++;
+								}
+							}
+						}
+					}
+					else if ((kings & (1 << n) || !flag) && !((occupied) & (1 << n - 4 - k))) // wolne lewo gora
+					{
+						AddPossible(occupied, color, kings, n, -4 - k, -1, possible, possibilities);
+						possible++;
+						//printf("Znaleziono %d -> lg", n);
+						if (kings & (1 << n))
+						{
+							t_n = n - 4 - k;
+							k ^= 1;
+							while ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && !(occupied & (1 << t_n)))
+							{
+								AddPossible(occupied, color, kings, n, t_n - n, -1, possible, possibilities);
+								possible++;
+								//printf("Znaleziono krol %d -> lg", t_n + 4 + 1 - k);
+								t_n += -4 - k;
+								k ^= 1;
+							}
+							if ((t_n >> 2) > 0 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(occupied & (1 << t_n - 4 - k)))
+							{
+								//printf("Znaleziono krol %d -> lglg", t_n + 4 + 1 - k);
+								Move(&occupied, &color, &kings, n, t_n + 4 + 1 - k);
+								TempRemove(&occupied, t_n);
+								if (FindPossibleMultipleHit(occupied, color, kings, t_n + 4 + 1 - k, -4 - k, t_n, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, t_n - 4 - k - n, t_n, possible, possibilities);
+									possible++;
+								}
+								Move(&occupied, &color, &kings, t_n + 4 + 1 - k, n);
+								Add(&occupied, t_n);
+							}
+							k = (n >> 2) & 1;
+						}
+					}
+				}
+				if ((n & 3) - k < 3) // przedostatnia kolumna, moze w prawo
+				{
+					if (enemies & (1 << n - 3 - k)) // zajete
+					{
+						if (((n >> 2) > 1) && ((n & 3) < 3)) // podwojny skos prawo gora
+						{
+							if (!((occupied) & (1 << n - 7))) // podwojny skos mozliwy
+							{
+								//printf("Znaleziono %d -> pgpg", n);
+								if (FindPossibleMultipleHit(occupied, color, kings, n, -7, n - 3 - k, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, -7, n - 3 - k, possible, possibilities);
+									possible++;
+								}
+							}
+						}
+					}
+					else if ((kings & (1 << n) || !flag) && !((occupied) & (1 << n - 3 - k))) // wolne prawo gora
+					{
+						AddPossible(occupied, color, kings, n, -3 - k, -1, possible, possibilities);
+						possible++;
+						//printf("Znaleziono %d -> pg", n);
+						if (kings & (1 << n))
+						{
+							t_n = n - 3 - k;
+							k ^= 1;
+							while ((t_n >> 2) > 0 && ((t_n & 3) - k < 3) && !(occupied & (1 << t_n)))
+							{
+								AddPossible(occupied, color, kings, n, t_n - n, -1, possible, possibilities);
+								t_n += -3 - k;
+								k ^= 1;
+								possible++;
+								//printf("Znaleziono krol %d -> pg", t_n + 3 + 1 - k);
+							}
+							if ((t_n >> 2) > 0 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(occupied & (1 << t_n - 3 - k)))
+							{
+								//printf("Znaleziono krol %d -> pgpg", t_n + 3 + 1 - k);
+								Move(&occupied, &color, &kings, n, t_n + 3 + 1 - k);
+								TempRemove(&occupied, t_n);
+								if (FindPossibleMultipleHit(occupied, color, kings, t_n + 3 + 1 - k, -3 - k, t_n, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, t_n - 3 - k - n, t_n, possible, possibilities);
+									possible++;
+								}
+								Move(&occupied, &color, &kings, t_n + 3 + 1 - k, n);
+								Add(&occupied, t_n);
+							}
+							k = (n >> 2) & 1;
+						}
+					}
+				}
+			} // opcje w gore sprawdzone
+			if ((n >> 2) < 7) // przedostatni rzad, mozna w dol
+			{
+				if ((n & 3) + 1 - k > 0) // druga kolumna, mozna w prawo
+				{
+					if (enemies & (1 << n + 4 - k)) // zajete
+					{
+						if (((n >> 2) < 6) && ((n & 3) > 0)) // podwojny skos lewo dol
+						{
+							if (!((occupied) & (1 << n + 7))) // podwojny skos mozliwy
+							{
+								//printf("Znaleziono %d -> ldld", n);
+								if (FindPossibleMultipleHit(occupied, color, kings, n, 7, n + 4 - k, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, 7, n + 4 - k, possible, possibilities);
+									possible++;
+								}
+							}
+						}
+					}
+					else if ((kings & (1 << n) || flag) && !((occupied) & (1 << n + 4 - k)))// wolne lewo dol
+					{
+						AddPossible(occupied, color, kings, n, 4 - k, -1, possible, possibilities);
+						possible++;
+						//printf("Znaleziono %d -> ld", n);
+						if (kings & (1 << n))
+						{
+							t_n = n + 4 - k;
+							k ^= 1;
+							while ((t_n >> 2) < 7 && ((t_n & 3) + 1 - k) && !(occupied & (1 << t_n)))
+							{
+								AddPossible(occupied, color, kings, n, t_n - n, -1, possible, possibilities);
+								t_n += 4 - k;
+								k ^= 1;
+								possible++;
+								//printf("Znaleziono krol %d -> ld", t_n - 4 + 1 - k);
+							}
+							if ((t_n >> 2) < 7 && ((t_n & 3) + 1 - k) && (enemies & (1 << t_n)) && !(occupied & (1 << t_n + 4 - k)))
+							{
+								//printf("Znaleziono %d -> ldld", t_n - 4 + 1 - k);
+								Move(&occupied, &color, &kings, n, t_n - 4 + 1 - k);
+								TempRemove(&occupied, t_n);
+								if (FindPossibleMultipleHit(occupied, color, kings, t_n - 4 + 1 - k, 4 - k, t_n, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, t_n + 3 - k - n, t_n, possible, possibilities);
+									possible++;
+								}
+								Move(&occupied, &color, &kings, t_n - 4 + 1 - k, n);
+								Add(&occupied, t_n);
+							}
+							k = (n >> 2) & 1;
+						}
+					}
+				}
+				if (((n & 3) - k) < 3) // przedostatnia kolumna, mozna w prawo
+				{
+					if (enemies & (1 << n + 5 - k)) // zajete
+					{
+						if (((n >> 2) < 6) && ((n & 3) < 3)) // podwojny skos prawo dol
+						{
+							if (!((occupied) & (1 << n + 9))) // podwojny skos mozliwy
+							{
+								//printf("Znaleziono %d -> pdpd", n);
+								if (FindPossibleMultipleHit(occupied, color, kings, n, 9, n + 5 - k, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, 9, n + 5 - k, possible, possibilities);
+									possible++;
+								}
+							}
+						}
+					}
+					else if ((kings & (1 << n) || flag) && !((occupied) & (1 << n + 5 - k))) // wolne prawo dol
+					{
+						AddPossible(occupied, color, kings, n, 5 - k, -1, possible, possibilities);
+						possible++;
+						//printf("Znaleziono %d -> pd", n);
+						if (kings & (1 << n))
+						{
+							t_n = n + 5 - k;
+							k ^= 1;
+							while ((t_n >> 2) < 7 && ((t_n & 3) - k < 3) && !(occupied & (1 << t_n)))
+							{
+								AddPossible(occupied, color, kings, n, t_n - n, -1, possible, possibilities);
+								t_n += 5 - k;
+								k ^= 1;
+								possible++;
+								//printf("Znaleziono krol %d -> pd", t_n - 5 + 1 - k);
+							}
+							if ((t_n >> 2) < 7 && ((t_n & 3) - k < 3) && (enemies & (1 << t_n)) && !(occupied & (1 << t_n + 5 - k)))
+							{
+								//printf("Znaleziono krol %d -> pdpd", t_n - 5 + 1 - k);
+								Move(&occupied, &color, &kings, n, t_n - 5 + 1 - k);
+								TempRemove(&occupied, t_n);
+								if (FindPossibleMultipleHit(occupied, color, kings, t_n - 5 + 1 - k, 5 - k, t_n, &possible, possibilities, n))
+								{
+									AddPossible(occupied, color, kings, n, t_n + 5 - k - n, t_n, possible, possibilities);
+									possible++;
+								}
+								Move(&occupied, &color, &kings, t_n - 5 + 1 - k, n);
+								Add(&occupied, t_n);
+							}
+							k = (n >> 2) & 1;
+						}
+					}
+				}
+			} // opcje w dol sprawdzone
+		}
+		n++;
+		t_occupied >>= 1;
+	}
+	return possible;
+}
+
+bool FindPossibleMultipleHit(uint occupied, uint color, uint kings, int n, int move, int hit, int* possible, Possibilities* possibilities, int origin)
+{
+	bool end = true;
+	Move(&occupied, &color, &kings, n, move);
+	Remove(&occupied, &kings, hit);
+	n += move;
+	int count = 0;
+	int k = (n >> 2) & 1;
+	uint enemies = occupied & ~(color);
+	if ((n >> 2) > 1) // mozna dwa razy w gore
+	{
+		if ((n & 3) > 0) // mozna dwa razy w lewo
+		{
+			if ((enemies & (1 << n - 4 - k)) && !((occupied) & (1 << n - 9))) // raz zajete dwa wolne
+			{
+				end = false;
+				//printf("Kontynuacja bicia %d -> lglg", n);
+				if (FindPossibleMultipleHit(occupied, color, kings, n, -9, n - 4 - k, possible, possibilities, origin))
+				{
+					AddPossible(occupied, color, kings, origin, -9, n - 4 - k, *possible, possibilities);
+					(*possible)++;
+				}
+			}
+		}
+		if ((n & 3) < 3) // mozna dwa razy w prawo
+		{
+			if ((enemies & (1 << n - 3 - k)) && !((occupied) & (1 << n - 7))) // raz zajete dwa wolne
+			{
+				end = false;
+				//printf("Kontynuacja bicia %d -> pgpg", n);
+				if (FindPossibleMultipleHit(occupied, color, kings, n, -7, n - 3 - k, possible, possibilities, n))
+				{
+					AddPossible(occupied, color, kings, origin, -7, n - 3 - k, *possible, possibilities);
+					(* possible)++;
+				}
+			}
+		}
+	}
+	if ((n >> 2) < 6) // mozna dwa razy w dol
+	{
+		if ((n & 3) > 0) // mozna dwa razy w lewo
+		{
+			if ((enemies & (1 << n + 4 - k)) && !((occupied) & (1 << n + 7))) // raz zajete dwa wolne
+			{
+				end = false;
+				//printf("Kontynuacja bicia %d -> ldld", n);
+				if (FindPossibleMultipleHit(occupied, color, kings, n, 7, n + 4 - k, possible, possibilities, n))
+				{
+					AddPossible(occupied, color, kings, origin, 7, n + 4 - k, *possible, possibilities);
+					(*possible)++;
+				}
+			}
+		}
+		if ((n & 3) < 3) // mozna dwa razy w prawo
+		{
+			if ((enemies & (1 << n + 5 - k)) && !((occupied) & (1 << n + 9))) // raz zajete dwa wolne
+			{
+				end = false;
+				//printf("Kontynuacja bicia %d -> pdpd", n);
+				if (FindPossibleMultipleHit(occupied, color, kings, n, 9, n + 5 - k, possible, possibilities, n))
+				{
+					AddPossible(occupied, color, kings, origin, 9, n + 5 - k, *possible, possibilities);
+					(* possible)++;
+				}
+			}
+		}
+	}
+	return end;
+}
+
+void AddPossible(uint occupied, uint color, uint kings, int n, int move, int hit, int possibleIndex, Possibilities* possibilities)
+{
+	if (move != 0) Move(&occupied, &color, &kings, n, move);
+	if (hit >= 0) Remove(&occupied, &kings, hit);
+	possibilities->origins[possibleIndex] = n;
+	possibilities->boards[possibleIndex] = occupied;
+	possibilities->colors[possibleIndex] = ~color;
+	possibilities->kings[possibleIndex] = kings;
+	possibilities->wins[possibleIndex] = 0;
+}
+
+void DisplayPossibilities(Possibilities possibilities, int count)
+{
+	char board[8][8];
+	for (int i = 0; i < count; i++)
+	{
+		printf("Mozliwosc z %d\n", possibilities.origins[i]);
+		Decode(board, possibilities.boards[i], possibilities.colors[i], possibilities.kings[i]);
+		DisplayBoard(board);
 	}
 }
