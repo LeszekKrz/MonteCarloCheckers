@@ -54,6 +54,7 @@ __global__ void SimulateGame(RandomResult*, Possibilities*, int);
 __device__ __host__ int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
 
 __device__ __host__ bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
+__device__ __host__ int CalculateScore(uint, uint, int);
 
 int FindPossibleMoves(uint, uint, uint, int, Possibilities*);
 bool FindPossibleMultipleHit(uint, uint, uint, int, int, int, int*, Possibilities*, int);
@@ -119,14 +120,12 @@ int main()
 	PrintBits(occupied);
 	PrintBits(color);
 	PrintBits(kings);
-	int blacks = 12, whites = 12;
+	int whites = 12, blacks = 12;
 	int result;
 	int moves = 0;
 	int maxMoves = 0;
 	for (int j = 0; j < 0; j++)
 	{
-		blacks = 12;
-		whites = 12;
 		for (int i = 0; i < 8; i++)
 		{
 			for (int j = 0; j < 8; j++)
@@ -149,11 +148,13 @@ int main()
 		Encode(checkersBoard, &occupied, &color, &kings);
 		for (int i = 0; i < 100; i++)
 		{
-			moves = FindPossibleMoves(occupied, color, kings, i % 2, &possibilities);
 			//DisplayPossibilities(possibilities, moves);
 			if (moves > maxMoves) maxMoves = moves;
 			//printf("%d possible moves \n", moves);
 			result = MakeMove(&occupied, &color, &kings, &random, i % 2);
+			whites >>= 5;whites = CalculateScore(occupied, color, i%2);
+			blacks = whites & 31;
+			whites >>= 5;
 			if (result == -1)
 			{
 				/*printf("Koniec gry!\n");
@@ -172,30 +173,24 @@ int main()
 			}
 			else if (result > 0)
 			{
-				if (i % 2)
+				if (whites == 0)
 				{
-					whites -= result;
-					if (whites == 0)
-					{
-						//printf("Biali przegrali!\n");
-						//Decode(checkersBoard, occupied, ~color, kings);
-						//DisplayBoard(checkersBoard);
-						break;
-					}
+					printf("Biali przegrali!\n");
+					Decode(checkersBoard, occupied, color, kings);
+					DisplayBoard(checkersBoard);
+					break;
 				}
-				else
+
+				//blacks -= result;
+				if (blacks == 0)
 				{
-					blacks -= result;
-					if (blacks == 0)
-					{
-						//printf("Czarni przegrali\n");
-						//Decode(checkersBoard, occupied, color, kings);
-						//DisplayBoard(checkersBoard);
-						break;
-					}
+					printf("Czarni przegrali\n");
+					Decode(checkersBoard, occupied, ~color, kings);
+					DisplayBoard(checkersBoard);
+					break;
 				}
 			}
-			/*if (i % 2)
+			if (i % 2)
 			{
 				Decode(checkersBoard, occupied, ~color, kings);
 				printf("Y\n");
@@ -206,7 +201,7 @@ int main()
 				printf("X\n");
 			}
 			printf("Biali: %d Czarni: %d\n", whites, blacks);
-			DisplayBoard(checkersBoard);*/
+			DisplayBoard(checkersBoard);
 			color = ~color;
 		}
 	}
@@ -222,8 +217,7 @@ int main()
 
 	cudaError_t cudaStatus;
 
-	int blocks = FindPossibleMoves(occupied, color, kings, 0, &possibilities);
-	printf("%d mozliwosci\n", blocks);
+	int blocks;
 	//DisplayPossibilities(possibilities, blocks);
 	//for (int i = 0; i < blocks; i++)
 	//{
@@ -254,50 +248,9 @@ int main()
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&d_board, sizeof(uint));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMalloc((void**)&d_colors, sizeof(uint));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMalloc((void**)&d_kings, sizeof(uint));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
-
 
 	// Copy input vectors from host memory to GPU buffers.
 
-	cudaStatus = cudaMemcpy(d_possibilities, &possibilities, sizeof(Possibilities), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMemcpy(d_board, &occupied, sizeof(uint), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-	
-	cudaStatus = cudaMemcpy(d_colors, &color, sizeof(uint), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-	
-	cudaStatus = cudaMemcpy(d_kings, &kings, sizeof(uint), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
 
 	cudaEventRecord(m_stop);
 	cudaEventSynchronize(m_stop);
@@ -310,18 +263,30 @@ int main()
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 
+	int maxI, max;
 	
 	cudaEventRecord(start);
 	printf("Poczatek symulacji...\n");
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 3; i++)
 	{
+		blocks = FindPossibleMoves(occupied, color, kings, i%2, &possibilities);
+		printf("%d mozliwosci\n", blocks);
+		if (i) DisplayPossibilities(possibilities, blocks);
+
 		cudaStatus = cudaMemcpy(d_random, &random, sizeof(RandomResult), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy failed!");
 			goto Error;
 		}
+
+		cudaStatus = cudaMemcpy(d_possibilities, &possibilities, sizeof(Possibilities), cudaMemcpyHostToDevice);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+
 		dim3 blocks3(blocks, 10, 1);
-		SimulateGame << <blocks3,  1000>> > (d_random, d_possibilities, 1);
+		SimulateGame << <blocks3, 1000 >> > (d_random, d_possibilities, (i + 1) % 2);
 
 		cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
@@ -340,33 +305,33 @@ int main()
 		random.y += rand() % 100;
 		random.z += rand() % 100;
 
-	}
-	cudaStatus = cudaMemcpy(&possibilities, d_possibilities, sizeof(Possibilities), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess)
-	{
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
+		cudaStatus = cudaMemcpy(&possibilities, d_possibilities, sizeof(Possibilities), cudaMemcpyDeviceToHost);
+		if (cudaStatus != cudaSuccess)
+		{
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+
+		maxI = 0;
+		max = possibilities.wins[0];
+		for (int i = 1; i < blocks; i++)
+		{
+			if (possibilities.wins[i] > max)
+			{
+				maxI = i;
+				max = possibilities.wins[i];
+			}
+		}
+		for (int i = 0; i < blocks; i++) printf("Blok %d: %d\n", i, possibilities.wins[i]);
+		printf("Najlepsza mozliwosc %d\n", maxI + 1);
+		occupied = possibilities.boards[maxI];
+		color = possibilities.colors[maxI];
+		kings = possibilities.kings[maxI];
+		occupied = possibilities.boards[1];
+		color = possibilities.colors[1];
+		kings = possibilities.kings[1];
 	}
 	cudaEventRecord(stop);
-	for (int i = 0; i < blocks; i++) printf("Blok %d: %d\n", i, possibilities.wins[i]);
-
-
-	/*cudaStatus = cudaMemcpy(&color, d_colors, sizeof(uint), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess)
-	{
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-	cudaStatus = cudaMemcpy(&kings, d_kings, sizeof(uint), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess)
-	{
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}*/
-
-	//Decode(checkersBoard, occupied, color, kings);
-	//DisplayBoard(checkersBoard);
 
 	cudaEventSynchronize(stop);
 	float miliseconds = 0;
@@ -374,28 +339,7 @@ int main()
 	miliseconds /= 1000;
 	printf("Symulacja zakonczona po %f sekundach", miliseconds);
 
-
-	//MakeMove(&occupied, &color, &random);
-	//Decode(checkersBoard, occupied, color);
-	//DisplayBoard(checkersBoard);
-	//PrintBits(occupied);
-	//PrintBits(color);
-	//Move(&occupied, &color, 11, 4);
-	//Decode(checkersBoard, occupied, color);
-	//DisplayBoard(checkersBoard);
-	//PrintBits(occupied);
-	//PrintBits(UINT_MAX);
 	printf("\n");
-
-	//  printf("%d %d %d %d\n", random.x, random.y, random.z, random.w);
-	//  for (int i = 0; i < 20; i++)
-	//  {
-		  //random = Random(random);
-		  ////printf("%f\n",(int)((random.value + 0.5) / 0.1));
-	//      //printf("%f %f %d\n", (random.value + 0.5), (random.value + 0.5) / (1.0/12), (int)((random.value + 0.5) / (1.0/12)));
-	//  }
-
-
 
 
 	  // Add vectors in parallel.
@@ -417,10 +361,7 @@ int main()
 	  //}
 Error:
 	cudaFree(d_random);
-	cudaFree(d_board);
-	cudaFree(d_colors);
-	cudaFree(d_kings);
-
+	cudaFree(d_possibilities);
 	return 0;
 }
 
@@ -428,7 +369,6 @@ Error:
 
 __global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilites, int turn)
 {
-	int blacks = 12, whites = 12;
 	RandomResult m_random = *o_random;
 	m_random.w += threadIdx.x * (o_possibilites->boards[blockIdx.x] >> 26);
 	m_random.x += blockIdx.x * (o_possibilites->boards[blockIdx.x] >> 26);
@@ -437,15 +377,18 @@ __global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilit
 	uint m_board = o_possibilites->boards[blockIdx.x];
 	uint m_colors = o_possibilites->colors[blockIdx.x];
 	uint m_kings = o_possibilites->kings[blockIdx.x];
+	int whites = CalculateScore(m_board, m_colors, turn);
+	int blacks = whites & 31;
+	whites >>= 5;
 	RandomResult* random = &m_random;
 	uint* board = &m_board;
 	uint* colors = &m_colors;
 	uint* kings = &m_kings;
 	
 
-	/*char checkersBoard[8][8];
-	Decode(checkersBoard, *board, *colors, *kings);
-	DisplayBoard(checkersBoard);*/
+	char checkersBoard[8][8];
+	//Decode(checkersBoard, *board, *colors, *kings);
+	//DisplayBoard(checkersBoard);
 	//PrintBits(m_board);
 	//printf("%d\n", m_board);
 
@@ -494,24 +437,25 @@ __global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilit
 				}
 			}
 		}
-		//if (i % 2)
-		//{
-		//	Decode(checkersBoard, *board, ~(*colors), *kings);
-		//	printf("Y\n");
-		//}
-		//else
-		//{
-		//	Decode(checkersBoard, *board, *colors, *kings);
-		//	printf("X\n");
-		//}
-		//printf("Biali: %d Czarni: %d\n", whites, blacks);
-		//DisplayBoard(checkersBoard);
+		/*if (i % 2)
+		{
+			Decode(checkersBoard, *board, ~(*colors), *kings);
+			printf("Y\n");
+		}
+		else
+		{
+			Decode(checkersBoard, *board, *colors, *kings);
+			printf("X\n");
+		}
+		printf("Biali: %d Czarni: %d\n", whites, blacks);
+		DisplayBoard(checkersBoard);*/
 		*colors = ~(*colors);
 	}
-	blacks = __syncthreads_count(whites);
+	if (turn) blacks = __syncthreads_count(whites);
+	else blacks = __syncthreads_count(blacks);
 	if (threadIdx.x == 0)
 	{
-		printf("Biali wygrali %d gier w bloku %d\n", blacks, blockIdx.x);
+		printf("Nasi wygrali %d gier w bloku %d\n", blacks, blockIdx.x);
 		//o_possibilites->wins[blockIdx.x] += blacks;
 		atomicAdd(&(o_possibilites->wins[blockIdx.x]), blacks);
 	}
@@ -1713,4 +1657,22 @@ void DisplayPossibilities(Possibilities possibilities, int count)
 		Decode(board, possibilities.boards[i], possibilities.colors[i], possibilities.kings[i]);
 		DisplayBoard(board);
 	}
+}
+
+__device__ __host__ int CalculateScore(uint board, uint color, int flag)
+{
+	int whites = 0;
+	int blacks = 0;
+	if (flag) color = ~color;
+	while (board > 0)
+	{
+		if (board & 1)
+		{
+			if (board & color & 1) whites++;
+			else blacks++;
+		}
+		board >>= 1;
+		color >>= 1;
+	}
+	return (whites << 5) | blacks;
 }
