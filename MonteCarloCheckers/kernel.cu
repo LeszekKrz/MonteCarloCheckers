@@ -207,6 +207,7 @@ int main()
 	DisplayBoard(checkersBoard);
 	printf("Nacisnij dowolny przycisk aby rozpoczac gre\n");
 	getchar();
+	getchar();
 	
 	int whites = 12, blacks = 12;
 	int result;
