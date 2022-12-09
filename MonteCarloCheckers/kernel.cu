@@ -47,6 +47,9 @@ __device__ __host__ void Move(uint*, uint*, uint*, int, int);
 __device__ __host__ void Remove(uint*, uint*, int);
 
 __global__ void SimulateGame(RandomResult*, Possibilities*, int, bool);
+
+void SimulateGameCPU(RandomResult*, Possibilities*, int,int);
+
 __device__ __host__ int MakeMove(uint*, uint*, uint*, RandomResult*, bool);
 
 __device__ __host__ bool MultipleHit(uint*, uint*, uint*, RandomResult*, int*);
@@ -71,6 +74,8 @@ int main()
 	bool hint = false;
 	bool wait = false;
 	bool showMoves = true;
+	bool onCpu = false;
+	int thousands;
 	Possibilities possibilities;
 	for (int i = 0; i < 32; i++)
 	{
@@ -108,6 +113,18 @@ int main()
 	int i = 0;
 
 	int choice = -1;
+
+	printf("Na CPU czy GPU?\n");
+	printf("1. CPU\n");
+	printf("2. GPU\n");
+	printf("Wpisz 1 lub 2: ");
+	std::cin >> choice;
+	if (choice == 1) onCpu = true;
+	printf("\n");
+
+	printf("Ile tysiecy symulacji na kazdy mozliwy ruch? ");
+	std::cin >> thousands;
+	printf("\n");
 
 	printf("Wybierz:\n");
 	printf("1. Od poczatku\n");
@@ -247,6 +264,7 @@ int main()
 	cudaEvent_t start, stop;
 
 	int maxI, max;
+	int last = -1, lastI;
 	
 	printf("Poczatek symulacji...\n");
 	Encode(checkersBoard, &occupied, &color, &kings);
@@ -256,6 +274,19 @@ int main()
 	while(1)
 	{
 		int state = CalculateScore(occupied, color, i % 2);
+		if (state != last)
+		{
+			lastI = i;
+		}
+		else
+		{
+			if (i - lastI > 30)
+			{
+				printf("Remis!");
+				break;
+			}
+		}
+		last = state;
 		printf("Biali: %d Czarni %d\n", state >> 5, state & 31);
 		if ((state >> 5) == 0 || (state & 31) == 0)
 		{
@@ -293,31 +324,47 @@ int main()
 
 		if ((i % 2 == playerTurn && hint) || (i % 2 != playerTurn))
 		{
-			dim3 blocks3(blocks, 10, 1);
-			SimulateGame << <blocks3, 1000 >> > (d_random, d_possibilities, (i + 1) % 2, kills > 0);
-
-			cudaStatus = cudaGetLastError();
-			if (cudaStatus != cudaSuccess) {
-				fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-				goto Error;
-			}
-
-			cudaStatus = cudaDeviceSynchronize();
-			if (cudaStatus != cudaSuccess) {
-				fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-				goto Error;
-			}
-
-			random.w += rand() % 100;
-			random.x += rand() % 100;
-			random.y += rand() % 100;
-			random.z += rand() % 100;
-
-			cudaStatus = cudaMemcpy(&possibilities, d_possibilities, sizeof(Possibilities), cudaMemcpyDeviceToHost);
-			if (cudaStatus != cudaSuccess)
+			if (onCpu)
 			{
-				fprintf(stderr, "cudaMemcpy failed!");
-				goto Error;
+				for (int k = 0; k < blocks; k++)
+				{
+					if (kills == 0 || (kills > 0 && possibilities.kills[i] == true))
+					{
+						for (int j = 0; j < thousands * 1000; j++)
+						{
+							SimulateGameCPU(&random, &possibilities, (i + 1) % 2, k);
+						}
+					}
+				}
+			}
+			else
+			{
+				dim3 blocks3(blocks, 2*thousands, 1);
+				SimulateGame << <blocks3, 500 >> > (d_random, d_possibilities, (i + 1) % 2, kills > 0);
+
+				cudaStatus = cudaGetLastError();
+				if (cudaStatus != cudaSuccess) {
+					fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+					goto Error;
+				}
+
+				cudaStatus = cudaDeviceSynchronize();
+				if (cudaStatus != cudaSuccess) {
+					fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+					goto Error;
+				}
+
+				random.w += rand() % 100;
+				random.x += rand() % 100;
+				random.y += rand() % 100;
+				random.z += rand() % 100;
+
+				cudaStatus = cudaMemcpy(&possibilities, d_possibilities, sizeof(Possibilities), cudaMemcpyDeviceToHost);
+				if (cudaStatus != cudaSuccess)
+				{
+					fprintf(stderr, "cudaMemcpy failed!");
+					goto Error;
+				}
 			}
 
 			maxI = -1;
@@ -394,8 +441,6 @@ __global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilit
 	uint* kings = &m_kings;
 	
 
-	char checkersBoard[8][8];
-
 	int result;
 	for (int i = turn; i < 1000; i++)
 	{
@@ -432,6 +477,62 @@ __global__ void SimulateGame(RandomResult* o_random, Possibilities* o_possibilit
 		//printf("Nasi wygrali %d gier w bloku %d\n", blacks, blockIdx.x);
 		//o_possibilites->wins[blockIdx.x] += blacks;
 		atomicAdd(&(o_possibilites->wins[blockIdx.x]), blacks);
+	}
+}
+
+void SimulateGameCPU(RandomResult* o_random, Possibilities* o_possibilities, int turn, int move)
+{
+	uint m_board = o_possibilities->boards[move];
+	uint m_colors = o_possibilities->colors[move];
+	uint m_kings = o_possibilities->kings[move];
+	uint* board = &m_board;
+	uint* colors = &m_colors;
+	uint* kings = &m_kings;
+	RandomResult* random = o_random;
+	int whites = CalculateScore(*board, *colors, turn);
+	int blacks = whites & 31;
+	whites >>= 5;
+
+	int result;
+	char checkersBoard[8][8];
+	for (int i = turn; i < 1000; i++)
+	{
+		result = MakeMove(board, colors, kings, random, i % 2);
+		/*if (i % 2) Decode(checkersBoard, *board, ~(*colors), *kings);
+		else Decode(checkersBoard, *board, *colors, *kings);
+		DisplayBoard(checkersBoard);*/
+		if (result == -1)
+		{
+			break;
+		}
+		else if (result > 0)
+		{
+			if (i % 2)
+			{
+				whites -= result;
+				if (whites == 0)
+				{
+					break;
+				}
+			}
+			else
+			{
+				blacks -= result;
+				if (blacks == 0)
+				{
+					break;
+				}
+			}
+		}
+		*colors = ~(*colors);
+	}
+	if (turn)
+	{
+		o_possibilities->wins[move] += whites > 0 ? 1 : 0;
+	}
+	else
+	{
+		o_possibilities->wins[move] += blacks > 0 ? 1 : 0;
 	}
 }
 
